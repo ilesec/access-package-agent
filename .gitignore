@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+.python_packages/
+*.egg-info/
+dist/
+build/
+
+# Azure Functions
+local.settings.json
+bin/
+obj/
+
+# Environment files (contain secrets)
+env/.env.*
+!env/.env.*.example
+
+# Debug / utility files with potential secrets
+auth-body.json
+auth-disable.json
+diagnose_search.py
+
+# Build artifacts
+appPackage/build/
+funcapp.zip
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

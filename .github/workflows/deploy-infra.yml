@@ -1,0 +1,62 @@
+name: Deploy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-infra:
+    name: Deploy Azure Infrastructure
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create resource group
+        run: |
+          az group create \
+            --name ${{ vars.RESOURCE_GROUP }} \
+            --location ${{ vars.LOCATION || 'swedencentral' }}
+
+      - name: Deploy Bicep template
+        id: deploy
+        run: |
+          OUTPUT=$(az deployment group create \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --template-file infra/main.bicep \
+            --parameters \
+              entraClientId=${{ secrets.ENTRA_CLIENT_ID }} \
+              entraClientSecret=${{ secrets.ENTRA_CLIENT_SECRET }} \
+              entraTenantId=${{ secrets.AZURE_TENANT_ID }} \
+            --query "properties.outputs" \
+            --output json)
+
+          echo "FUNCTION_APP_NAME=$(echo $OUTPUT | jq -r '.functionAppName.value')" >> $GITHUB_OUTPUT
+          echo "FUNCTION_APP_URL=$(echo $OUTPUT | jq -r '.functionAppUrl.value')" >> $GITHUB_OUTPUT
+          echo "SEARCH_SERVICE=$(echo $OUTPUT | jq -r '.searchServiceName.value')" >> $GITHUB_OUTPUT
+
+      - name: Print deployment outputs
+        run: |
+          echo "Function App: ${{ steps.deploy.outputs.FUNCTION_APP_NAME }}"
+          echo "Function URL: ${{ steps.deploy.outputs.FUNCTION_APP_URL }}"
+          echo "Search:       ${{ steps.deploy.outputs.SEARCH_SERVICE }}"

@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://aka.ms/teams-toolkit/v1.7/yaml.schema.json
+# Visit https://aka.ms/teamsfx-v5.0-guide for details on this file
+# Visit https://aka.ms/teamsfx-actions for all available actions and their properties
+
+version: v1.7
+
+environmentFolderPath: ./env
+
+provision:
+  # Create the Teams app registration in the Developer Portal
+  - uses: teamsApp/create
+    with:
+      name: Access Package Assistant-${{APP_NAME_SUFFIX}}
+    writeToEnvironmentFile:
+      teamsAppId: TEAMS_APP_ID
+
+  # Build the app package by replacing placeholders in the manifest template
+  - uses: teamsApp/zipAppPackage
+    with:
+      manifestPath: ./appPackage/manifest.json
+      outputZipPath: ./appPackage/build/appPackage.dev.zip
+      outputFolder: ./appPackage/build
+
+  # Update the Teams app in the Developer Portal
+  - uses: teamsApp/update
+    with:
+      appPackagePath: ./appPackage/build/appPackage.dev.zip
+
+  # Register OAuth for the API plugin
+  - uses: oauth/register
+    with:
+      name: oauth2
+      flow: authorizationCode
+      appId: ${{TEAMS_APP_ID}}
+      clientId: ${{AZURE_CLIENT_ID}}
+      clientSecret: ${{AZURE_CLIENT_SECRET}}
+      apiSpecPath: ./appPackage/apiSpecificationFile/openapi.yaml
+    writeToEnvironmentFile:
+      configurationId: OAUTH_CONFIGURATION_ID
+
+  # Extend the Teams app to M365 Copilot (generates M365_APP_ID)
+  - uses: teamsApp/extendToM365
+    with:
+      appPackagePath: ./appPackage/build/appPackage.dev.zip
+    writeToEnvironmentFile:
+      titleId: M365_TITLE_ID
+      appId: M365_APP_ID
+
+deploy:
+  # Code deployment is handled by deploy.ps1 — ATK is only used for Copilot agent provisioning
+  - uses: script
+    with:
+      run: echo "Code deployment is managed separately via deploy.ps1. Run deploy.ps1 -Environment dev to deploy function code."
+projectId: ec28d6f6-9fce-49cb-9e72-467c3e52419f

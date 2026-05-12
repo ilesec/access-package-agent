@@ -1,0 +1,76 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/copilot/plugin/v2.2/schema.json",
+  "schema_version": "v2.2",
+  "name_for_human": "Access Package Assistant",
+  "description_for_human": "Search for and request Entra ID access packages",
+  "namespace": "accessPackages",
+  "functions": [
+    {
+      "name": "searchAccessPackages",
+      "description": "Search for access packages matching a natural language query. Returns the most relevant packages based on semantic similarity to the query.",
+      "capabilities": {
+        "response_semantics": {
+          "data_path": "$.results",
+          "properties": {
+            "title": "$.displayName",
+            "subtitle": "$.catalogName"
+          },
+          "static_template": {
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "type": "AdaptiveCard",
+            "version": "1.5",
+            "body": [
+              {
+                "type": "TextBlock",
+                "text": "${displayName}",
+                "weight": "Bolder",
+                "size": "Medium"
+              },
+              {
+                "type": "TextBlock",
+                "text": "${description}",
+                "wrap": true
+              },
+              {
+                "type": "FactSet",
+                "facts": [
+                  { "title": "Resources", "value": "${resources}" },
+                  { "title": "Catalog", "value": "${catalogName}" },
+                  { "title": "Score", "value": "${score}" }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "getPackageDetails",
+      "description": "Get detailed information about a specific access package including its resources, assignment policies, and eligibility requirements."
+    },
+    {
+      "name": "requestAccessPackage",
+      "description": "Submit a request for an access package assignment on behalf of the current user. Requires the access package ID and a business justification.",
+      "capabilities": {
+        "confirmation": {
+          "type": "AdaptiveCard",
+          "title": "Confirm Access Request",
+          "body": "You are about to request access to package **${accessPackageId}**.\n\nJustification: ${justification}\n\nDo you want to proceed?"
+        }
+      }
+    }
+  ],
+  "runtimes": [
+    {
+      "type": "OpenApi",
+      "auth": {
+        "type": "OAuthPluginVault",
+        "reference_id": "${{OAUTH_CONFIGURATION_ID}}"
+      },
+      "spec": {
+        "url": "apiSpecificationFile/openapi.yaml"
+      },
+      "run_for_functions": ["searchAccessPackages", "getPackageDetails", "requestAccessPackage"]
+    }
+  ]
+}

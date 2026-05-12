@@ -1,0 +1,223 @@
+openapi: 3.0.3
+info:
+  title: Access Package Assistant API
+  description: API for searching, viewing, and requesting Entra ID access packages.
+  version: 1.0.0
+
+servers:
+  - url: ${{AZURE_FUNCTION_URL}}
+    description: Azure Function App
+
+paths:
+  /api/searchPackages:
+    post:
+      operationId: searchAccessPackages
+      summary: Search for access packages
+      description: Search for access packages matching a natural language query. Uses hybrid vector + full-text search to find the most relevant packages.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: Natural language description of the access needed (e.g., "developer tools", "Azure DevOps access")
+                top:
+                  type: integer
+                  description: Maximum number of results to return (1-20, default 5)
+                  default: 5
+                  minimum: 1
+                  maximum: 20
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AccessPackageSearchResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/packageDetails/{id}:
+    get:
+      operationId: getPackageDetails
+      summary: Get access package details
+      description: Get detailed information about a specific access package, including its resources and assignment policies.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The access package ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Package details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessPackageDetail"
+        "401":
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/requestPackage:
+    post:
+      operationId: requestAccessPackage
+      summary: Request an access package
+      description: Submit an access package assignment request on behalf of the signed-in user. Requires a business justification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - accessPackageId
+                - justification
+              properties:
+                accessPackageId:
+                  type: string
+                  description: The ID of the access package to request
+                justification:
+                  type: string
+                  description: Business justification for requesting access
+                assignmentPolicyId:
+                  type: string
+                  description: Optional assignment policy ID. If omitted, the first available policy is used.
+      responses:
+        "200":
+          description: Request submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestResult"
+        "400":
+          description: Invalid request or no eligible policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    AccessPackageSearchResult:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Access package ID
+        displayName:
+          type: string
+          description: Display name of the access package
+        description:
+          type: string
+          description: Description of the access package
+        catalogName:
+          type: string
+          description: Name of the catalog containing the package
+        resources:
+          type: string
+          description: Comma-separated list of resources included in the package
+        assignmentPolicyId:
+          type: string
+          description: ID of the first available assignment policy
+        score:
+          type: number
+          description: Search relevance score
+
+    AccessPackageDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        isHidden:
+          type: boolean
+        createdDateTime:
+          type: string
+        resources:
+          type: array
+          items:
+            type: string
+          description: List of resource names included in the package
+        assignmentPolicies:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              displayName:
+                type: string
+              allowedTargetScope:
+                type: string
+              expiration:
+                type: object
+
+    RequestResult:
+      type: object
+      properties:
+        message:
+          type: string
+        requestId:
+          type: string
+        status:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+          tokenUrl: https://login.microsoftonline.com/common/oauth2/v2.0/token
+          scopes:
+            api://${{AZURE_CLIENT_ID}}/access_as_user: Access the API on behalf of the user
+
+security:
+  - oauth2:
+      - api://${{AZURE_CLIENT_ID}}/access_as_user
