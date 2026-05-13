@@ -4,16 +4,60 @@ An AI assistant that helps users discover and request Entra ID access packages u
 
 ## Architecture
 
-```
-Microsoft 365 Copilot (Declarative Agent)
-  └─ plugin.json → openapi.yaml
-       └─ Azure Function (Python 3.11, Flex Consumption)
-            ├─ POST /api/searchPackages  → Azure OpenAI (embed) → Azure AI Search
-            ├─ GET  /api/packageDetails/{id} → Microsoft Graph API (OBO)
-            └─ POST /api/requestPackage  → Microsoft Graph API (OBO)
+```mermaid
+graph TB
+    User([fa:fa-user User]) -->|natural language| Copilot[Microsoft 365 Copilot]
 
-Timer trigger (every 6 hours)
-  └─ Graph API → Azure OpenAI (embed) → Azure AI Search (upsert)
+    subgraph Agent["Declarative Agent"]
+        Copilot -->|SSO + OAuth| Plugin[plugin.json / openapi.yaml]
+    end
+
+    Plugin -->|POST /api/searchPackages| FuncSearch[searchPackages]
+    Plugin -->|GET /api/packageDetails/id| FuncDetails[packageDetails]
+    Plugin -->|POST /api/requestPackage| FuncRequest[requestPackage]
+
+    subgraph Azure["Azure Function App · Python 3.11 · Flex Consumption"]
+        FuncSearch
+        FuncDetails
+        FuncRequest
+        FuncSync[syncAccessPackages<br/>⏱ Timer · every 6h]
+    end
+
+    FuncSearch -->|embed query| OpenAI[Azure OpenAI<br/>text-embedding-3-small]
+    FuncSearch -->|hybrid search| AISearch[Azure AI Search<br/>vector + full-text]
+    OpenAI -.->|1536-dim vector| AISearch
+
+    FuncDetails -->|OBO token| Graph[Microsoft Graph API<br/>Entitlement Management]
+    FuncRequest -->|OBO token| Graph
+
+    FuncSync -->|app token| Graph
+    FuncSync -->|batch embed| OpenAI
+    FuncSync -->|upsert docs| AISearch
+
+    subgraph Infra["Supporting Infrastructure"]
+        KV[Azure Key Vault<br/>client secret]
+        AppIns[Application Insights<br/>logging]
+        Storage[Storage Account<br/>identity-based]
+    end
+
+    Azure -.-> KV
+    Azure -.-> AppIns
+    Azure -.-> Storage
+
+    subgraph Auth["Entra ID"]
+        SSO[SSO Registration]
+        OAuthVault[OAuthPluginVault]
+        ManagedId[Managed Identity<br/>RBAC]
+    end
+
+    Copilot -.-> SSO
+    Plugin -.-> OAuthVault
+    Azure -.-> ManagedId
+
+    style Agent fill:#e8f0fe,stroke:#4285f4
+    style Azure fill:#e6f4ea,stroke:#34a853
+    style Infra fill:#fef7e0,stroke:#f9ab00
+    style Auth fill:#fce8e6,stroke:#ea4335
 ```
 
 ## Prerequisites
