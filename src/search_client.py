@@ -20,10 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 def _get_credential():
-    api_key = os.environ.get("AZURE_SEARCH_API_KEY")
-    if api_key:
-        from azure.core.credentials import AzureKeyCredential
-        return AzureKeyCredential(api_key)
     return ManagedIdentityCredential()
 
 

@@ -14,6 +14,9 @@ paths:
       operationId: searchAccessPackages
       summary: Search for access packages
       description: Search for access packages matching a natural language query. Uses hybrid vector + full-text search to find the most relevant packages.
+      security:
+        - oauth2:
+            - api://${{AZURE_CLIENT_ID}}/access_as_user
       requestBody:
         required: true
         content:
@@ -56,6 +59,9 @@ paths:
       operationId: getPackageDetails
       summary: Get access package details
       description: Get detailed information about a specific access package, including its resources and assignment policies.
+      security:
+        - oauth2:
+            - api://${{AZURE_CLIENT_ID}}/access_as_user
       parameters:
         - name: id
           in: path
@@ -88,6 +94,9 @@ paths:
       operationId: requestAccessPackage
       summary: Request an access package
       description: Submit an access package assignment request on behalf of the signed-in user. Requires a business justification.
+      security:
+        - oauth2:
+            - api://${{AZURE_CLIENT_ID}}/access_as_user
       requestBody:
         required: true
         content:
@@ -218,6 +227,4 @@ components:
           scopes:
             api://${{AZURE_CLIENT_ID}}/access_as_user: Access the API on behalf of the user
 
-security:
-  - oauth2:
-      - api://${{AZURE_CLIENT_ID}}/access_as_user
+

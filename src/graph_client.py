@@ -30,13 +30,33 @@ def get_app_token() -> str:
 def get_obo_token(user_assertion: str) -> str:
     """Exchange a user token for a Graph API token via the On-Behalf-Of flow.
     Used by HTTP endpoints that act on behalf of the signed-in user."""
-    app = _get_confidential_app()
+    tenant_id = os.environ["APP_TENANT_ID"]
+    app = msal.ConfidentialClientApplication(
+        client_id=os.environ["APP_CLIENT_ID"],
+        client_credential=os.environ["APP_CLIENT_SECRET"],
+        authority=f"https://login.microsoftonline.com/{tenant_id}",
+    )
     result = app.acquire_token_on_behalf_of(
         user_assertion=user_assertion,
-        scopes=["https://graph.microsoft.com/EntitlementManagement.ReadWrite.All"],
+        scopes=[
+            "https://graph.microsoft.com/EntitlementManagement.ReadWrite.All",
+            "https://graph.microsoft.com/User.Read",
+        ],
     )
     if "access_token" not in result:
         raise RuntimeError(f"OBO token exchange failed: {result.get('error_description', result)}")
+
+    # Log token scopes for debugging
+    import base64, json as _json
+    try:
+        payload = result["access_token"].split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = _json.loads(base64.urlsafe_b64decode(payload))
+        logger.info("OBO token scopes: %s, roles: %s, aud: %s",
+                     claims.get("scp"), claims.get("roles"), claims.get("aud"))
+    except Exception:
+        logger.warning("Could not decode OBO token for logging")
+
     return result["access_token"]
 
 
@@ -139,19 +159,32 @@ def create_assignment_request(
     access_package_id: str,
     assignment_policy_id: str,
     justification: str,
+    target_id: str | None = None,
 ) -> dict:
-    """Submit an access package assignment request on behalf of the signed-in user."""
-    user = get_me(token)
-    user_id = user["id"]
+    """Submit an access package assignment request.
+
+    If target_id is provided, it is used directly (adminAdd with app token).
+    Otherwise, the token is assumed to be a user (OBO) token (userAdd)
+    and the requesting user is inferred by Graph from the token.
+    """
+    if target_id:
+        request_type = "adminAdd"
+        assignment = {
+            "targetId": target_id,
+            "accessPackageId": access_package_id,
+            "assignmentPolicyId": assignment_policy_id,
+        }
+    else:
+        request_type = "userAdd"
+        assignment = {
+            "accessPackageId": access_package_id,
+            "assignmentPolicyId": assignment_policy_id,
+        }
 
     url = f"{GRAPH_BASE}/identityGovernance/entitlementManagement/assignmentRequests"
     body = {
-        "requestType": "userAdd",
-        "accessPackageAssignment": {
-            "targetId": user_id,
-            "accessPackageId": access_package_id,
-            "assignmentPolicyId": assignment_policy_id,
-        },
+        "requestType": request_type,
+        "assignment": assignment,
         "justification": justification,
     }
 

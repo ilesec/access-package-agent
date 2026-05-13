@@ -15,22 +15,13 @@ def _get_client() -> AzureOpenAI:
         endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
         api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21")
 
-        # Prefer managed identity; fall back to API key if set
-        api_key = os.environ.get("AZURE_OPENAI_API_KEY")
-        if api_key:
-            _client = AzureOpenAI(
-                azure_endpoint=endpoint,
-                api_key=api_key,
-                api_version=api_version,
-            )
-        else:
-            credential = ManagedIdentityCredential()
-            token_provider = lambda: credential.get_token("https://cognitiveservices.azure.com/.default").token
-            _client = AzureOpenAI(
-                azure_endpoint=endpoint,
-                azure_ad_token_provider=token_provider,
-                api_version=api_version,
-            )
+        credential = ManagedIdentityCredential()
+        token_provider = lambda: credential.get_token("https://cognitiveservices.azure.com/.default").token
+        _client = AzureOpenAI(
+            azure_endpoint=endpoint,
+            azure_ad_token_provider=token_provider,
+            api_version=api_version,
+        )
     return _client
 
 

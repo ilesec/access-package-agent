@@ -14,12 +14,15 @@ def handle(package_id: str, auth_header: str | None) -> tuple[int, dict]:
     if not package_id:
         return 400, {"error": "Missing package id"}
 
+    logger.info("packageDetails auth_header present: %s, starts_with_Bearer: %s",
+               auth_header is not None,
+               auth_header.startswith("Bearer ") if auth_header else False)
     try:
         user_token = graph_client._extract_bearer_token(auth_header)
         graph_token = graph_client.get_obo_token(user_token)
     except Exception as exc:
-        logger.warning("Auth failed: %s", exc)
-        return 401, {"error": "Authentication failed"}
+        logger.error("Auth/OBO failed: %s", exc, exc_info=True)
+        return 401, {"error": f"Authentication failed: {exc}"}
 
     try:
         detail = graph_client.get_access_package_detail(graph_token, package_id)

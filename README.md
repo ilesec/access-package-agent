@@ -64,7 +64,35 @@ This command:
 
 Go to **Azure Portal → Entra ID → App Registrations → Access Package Agent → API Permissions → Grant admin consent**.
 
-### 5. Provision the Copilot agent
+This grants the `EntitlementManagement.ReadWrite.All` application permission needed by the sync pipeline to read access packages from Graph API.
+
+### 5. Register Entra SSO in Teams Developer Portal
+
+This step enables single sign-on so users don't need to separately sign in when using the Copilot agent.
+
+1. Open [Teams Developer Portal → Tools → Microsoft Entra SSO client ID registration](https://dev.teams.microsoft.com/tools)
+2. Click **Register client ID** (or **New client registration** if you have existing registrations)
+3. Fill in:
+   - **Registration name**: `access-package-agent-sso`
+   - **Base URL**: Your Azure Function App URL (e.g., `https://<func-app>.azurewebsites.net`)
+   - **Client ID**: The `AZURE_CLIENT_ID` from `env/.env.dev`
+4. Click **Save** — this generates an **SSO registration ID** and an **Application ID URI**
+5. Add the SSO registration ID to `env/.env.dev`:
+   ```
+   SSO_CONFIGURATION_ID=<sso-registration-id>
+   ```
+
+6. Add the generated **Application ID URI** to the Entra app registration:
+   - Go to **Azure Portal → Entra ID → App Registrations → Access Package Agent → Manifest**
+   - Add the new URI to the `identifierUris` array (keep the existing `api://<client-id>` URI):
+     ```json
+     "identifierUris": [
+       "api://<client-id>",
+       "<new-uri-from-sso-registration>"
+     ]
+     ```
+
+### 6. Provision the Copilot agent
 
 Authenticate ATK to both M365 and Azure:
 
@@ -79,9 +107,11 @@ Then provision:
 atk provision --env dev -i false
 ```
 
-This registers the app in the Teams Developer Portal, configures OAuth for the API plugin, and extends it to M365 Copilot. The `TEAMS_APP_ID`, `M365_APP_ID`, and `OAUTH_CONFIGURATION_ID` are written to `env/.env.dev`.
+This registers the app in the Teams Developer Portal and extends it to M365 Copilot. The `TEAMS_APP_ID` and `M365_APP_ID` are written to `env/.env.dev`.
 
-### 6. Open in M365 Copilot
+> **Note:** The ATK provision step registers both OAuth (for API plugin authentication via `OAuthPluginVault` in `plugin.json`) and SSO (configured in step 5 for seamless single sign-on). OAuth handles how M365 Copilot authenticates to the Azure Function API, while SSO ensures users aren't prompted to sign in separately. The first time a user calls `packageDetails` or `requestPackage`, they may be prompted to consent to Graph permissions (one-time only).
+
+### 7. Open in M365 Copilot
 
 ```
 https://m365.cloud.microsoft/chat/entity1-d870f6cd-4aa5-4d42-9626-ab690c041429/<M365_APP_ID>?auth=2&developerMode=Basic
@@ -147,7 +177,7 @@ Two workflows are provided in `.github/workflows/`:
 | `/api/packageDetails/{id}` | GET | OAuth (OBO) | Get package details, resources, policies |
 | `/api/requestPackage` | POST | OAuth (OBO) | Submit access package assignment request |
 
-> **Note:** All endpoints use anonymous function-level auth (`AuthLevel.ANONYMOUS`). Authentication is handled by M365 Copilot via OAuth (OAuthPluginVault). The `packageDetails` and `requestPackage` endpoints additionally use the bearer token for On-Behalf-Of (OBO) flow to call Microsoft Graph.
+> **Note:** All endpoints use anonymous function-level auth (`AuthLevel.ANONYMOUS`). Authentication is handled by M365 Copilot via Entra ID SSO (single sign-on). The `packageDetails` and `requestPackage` endpoints additionally use the bearer token for On-Behalf-Of (OBO) flow to call Microsoft Graph.
 
 ## Configuration
 
@@ -176,9 +206,12 @@ access-package-agent/
 │   ├── manifest.json                    # M365 app manifest (template with ${{}} vars)
 │   ├── declarativeAgent.json            # Agent instructions & conversation starters
 │   ├── plugin.json                      # API plugin (auth, functions, adaptive cards)
+│   ├── color.png                        # App icon (color)
+│   ├── outline.png                      # App icon (outline)
 │   └── apiSpecificationFile/
 │       └── openapi.yaml                 # OpenAPI 3.0 spec for the Azure Function endpoints
 ├── src/
+│   ├── __init__.py                      # Package init
 │   ├── embedding_client.py              # Azure OpenAI embedding helper
 │   ├── search_client.py                 # Azure AI Search index & query helper
 │   ├── graph_client.py                  # Microsoft Graph API helper (OBO, app tokens)
@@ -210,7 +243,7 @@ access-package-agent/
 | **403 on Graph API calls** | Admin consent not granted. Go to Azure Portal → App Registrations → API Permissions → Grant admin consent. |
 | **Key Vault access denied** | Function App managed identity needs "Key Vault Secrets User" role. Re-run the Bicep deployment. |
 | **Redirect URI mismatch** | Run `deploy.ps1` again — it auto-updates redirect URIs. Or check the Entra app registration manually. |
-| **Empty search results** | Sync hasn't run yet. Trigger it manually (see "Manually triggering a sync" above) or redeploy with `deploy.ps1`. |
+| **Empty search results** | Sync hasn't run yet or admin consent is missing. Check: 1) Admin consent granted for `EntitlementManagement.ReadWrite.All` application permission (Step 4). 2) Access packages exist in Entra ID → Identity Governance → Entitlement Management. 3) Application Insights logs for sync errors. 4) AI Search index document count > 0. Trigger sync manually (see below) or redeploy with `deploy.ps1`. |
 | **App package variables not replaced** | Run `.\build-apppackage.ps1 -Environment dev` or `atk provision --env dev -i false` — don't manually edit files in `appPackage/build/`. |
 | **ATK provision fails with schema error** | Check `m365agents.yml` against the schema. Run `atk provision --env dev -i false` and read the error details. |
 | **401 on sync trigger** | Ensure you're using the master key from `az functionapp keys list`. The sync is a timer trigger, not HTTP — use the `/admin/functions/` endpoint with `{"input":""}` body. |
@@ -219,3 +252,5 @@ access-package-agent/
 | **Soft-deleted OpenAI resource blocks deploy** | Purge it first: `az cognitiveservices account purge --name <NAME> --resource-group <RG> --location <LOCATION>` |
 | **AADSTS50194: not configured as multi-tenant** | The app registration must use `signInAudience: AzureADMultipleOrgs` because M365 Copilot uses the `/common` OAuth endpoint. Run: `az ad app update --id <CLIENT_ID> --sign-in-audience AzureADMultipleOrgs` |
 | **AADSTS50011: redirect URI mismatch** | Ensure both `https://teams.microsoft.com/api/platform/v1.0/oAuthConsentRedirect` and `https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect` are registered as redirect URIs. Run `deploy.ps1` to auto-update them. |
+| **User prompted to sign in separately** | Switch to Entra SSO auth (see Step 5). Ensure the SSO registration in Teams Developer Portal is configured and `SSO_CONFIGURATION_ID` is set in `env/.env.dev`. Re-provision with `atk provision --env dev -i false`. |
+| **No access packages in Entra audit logs** | Admin consent for the `EntitlementManagement.ReadWrite.All` *application* permission is likely missing. Grant it in Azure Portal → App Registrations → API Permissions. Then trigger a sync manually. |

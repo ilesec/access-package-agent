@@ -29,12 +29,14 @@ provision:
   # Register OAuth for the API plugin
   - uses: oauth/register
     with:
-      name: oauth2
+      name: accessPackageOAuth
       flow: authorizationCode
       appId: ${{TEAMS_APP_ID}}
+      apiSpecPath: ./appPackage/apiSpecificationFile/openapi.yaml
       clientId: ${{AZURE_CLIENT_ID}}
       clientSecret: ${{AZURE_CLIENT_SECRET}}
-      apiSpecPath: ./appPackage/apiSpecificationFile/openapi.yaml
+      isPKCEEnabled: true
+      identityProvider: MicrosoftEntra
     writeToEnvironmentFile:
       configurationId: OAUTH_CONFIGURATION_ID
 

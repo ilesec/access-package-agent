@@ -164,10 +164,13 @@ try {
 }
 
 Write-Host "Deploying to $functionAppName (Flex Consumption)..."
-az functionapp deployment source config-zip `
+# Use az functionapp deploy which uploads via the management plane (ARM)
+# and does not require shared key access on the storage account.
+az functionapp deploy `
     --resource-group $resourceGroup `
     --name $functionAppName `
-    --src $zipPath `
+    --src-path $zipPath `
+    --type zip `
     --output none
 
 if ($LASTEXITCODE -ne 0) {
